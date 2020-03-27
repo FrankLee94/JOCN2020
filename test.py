@@ -12,7 +12,7 @@ import copy
 import random
 
 
-NODE_NUM = 6			#节点数目
+NODE_NUM = 24			#节点数目
 
 # 从xlsx文件里面读取拓扑数据。
 def read_topo_file(topo_file_path):
@@ -57,16 +57,25 @@ def shortest_path(G):
 	print(nx.descendants(G, 0)) #有向图，某个节点的后代
 	print(list(nx.simple_cycles(G)))
 
-def test(a):
-	a.pop(0) 
+def test2(n2):
+	if n2 == 2:
+		return 1
+	return 1
+
+def test1(n1, n2):
+	if n1 == 3:
+		return
+	test2(n2)
+
 
 if __name__ == '__main__':
-	topo_file_path = './topology/topo_single_node.xlsx'
-	#G = read_topo_file(topo_file_path)
+	topo_file_path = './topology/topo_usnet.xlsx'
+	G = read_topo_file(topo_file_path)
 	#drwa_topo(G)
 	#print(nx.has_path(G, 0, 3))
 	#print(nx.shortest_path(G, source=1, target=5, weight='weight'))
 
-	a = {(1,2):{0:66, 1:666}, (2,3):{0:6666, 1:6666}}
-	a[(1,3)][2] = 3
-	print(a)
+	n1 = 1,
+	m2 = 1
+	test1(n1 ,m2)
+

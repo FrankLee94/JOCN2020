@@ -12,9 +12,9 @@ import random
 
 
 # 从xlsx文件里面读取拓扑数据。
-def read_topo_file(topo_file_path):
+def read_topo_file(topo_file_p):
 	G_topo = nx.Graph()
-	workbook = xlrd.open_workbook(topo_file_path)
+	workbook = xlrd.open_workbook(topo_file_p)
 	booksheet = workbook.sheet_by_index(0)   #读取第一页的全部内容
 	nrows = booksheet.nrows			#一共有多少行数据
 	for i in range(1, nrows):		#第0行不要
@@ -129,7 +129,7 @@ def reso_delete(lp_found, lp_new, bandwidth, wave_use_index, exist_lp):
 			delete_lp(lp, wave_use_index, exist_lp)	
 
 #使用已有且符合条件的lp构建有向图
-def build_lp_graph(s_id, d_id, node_num, wave_capa, bandwidth, exist_lp):
+def build_lp_graph(node_num, wave_capa, bandwidth, exist_lp):
 	G_lp = nx.DiGraph()
 	G_lp.add_nodes_from([i for i in range(node_num)])#所有节点都加入
 	select_lp_index = {}		#记录构建有向图所使用的光路,key=(s, d), value = lp_id
@@ -170,11 +170,12 @@ def find_lp_onehop(s_id, d_id, wave_capa, bandwidth, exist_lp):
 
 #2.查找可否在两个节点之间建立一条透明的光路
 #lp_new，list,[待确定lp_id,源节点，宿节点，波长号，使用带宽0，路径节点集合]
-def find_lp_new(G_topo, s_id, d_id, wave_num, bandwidth, wave_use_index):
+def find_lp_new(G_topo, s_id, d_id, wave_num, wave_use_index):
 	is_lp_new = False
 	flag = False
 	lp_found = []
 	lp_new = []
+	wave = -1
 	#两节点间的全部的最短路径，是一个双重list
 	#注意此时计算最短路径不用路径距离。用跳数衡量
 	if not nx.has_path(G_topo, source = s_id, target = d_id):
@@ -199,12 +200,12 @@ def find_lp_new(G_topo, s_id, d_id, wave_num, bandwidth, wave_use_index):
 #3.查找可否使用已经存在的多个光路多跳接入，采用Dij算法寻找最短路径
 #select_lp_index:构建有向图中使用的已存在lp，字典格式，key=(s,d), value=lp_id
 #lp_found:list,[lp_id，源节点，宿节点]
-def find_lp_multihop(G_topo, s_id, d_id, bandwidth, exist_lp):
+def find_lp_multihop(s_id, d_id, node_num, wave_capa, bandwidth, exist_lp):
 	is_lp_multihop = False
 	lp_found = []
 	lp_new = []
 	#使用已有且符合条件的lp构建有向图
-	G_lp, select_lp_index = build_lp_graph(s_id, d_id, node_num, wave_capa, bandwidth, exist_lp)
+	G_lp, select_lp_index = build_lp_graph(node_num, wave_capa, bandwidth, exist_lp)
 	if not nx.has_path(G_lp, source = s_id, target = d_id): #不可达，直接返回
 		return is_lp_multihop, lp_found, lp_new
 	else:
@@ -218,17 +219,17 @@ def find_lp_multihop(G_topo, s_id, d_id, bandwidth, exist_lp):
 #i:  新建光路：源节点连通的点 -> 宿节点，否则：
 #ii：新建光路：源节点 -> 宿节点连通的点；否则：
 #iii:新建光路：源节点连通的点 -> 宿节点连通的点。
-def find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, bandwidth, wave_use_index, exist_lp):
+def find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, wave_num, bandwidth, wave_use_index, exist_lp):
 	is_lp_mix = False
 	lp_found = []
 	lp_new = []
-	G_lp, select_lp_index = build_lp_graph(s_id, d_id, node_num, wave_capa, bandwidth, exist_lp)
+	G_lp, select_lp_index = build_lp_graph(node_num, wave_capa, bandwidth, exist_lp)
 	s_children = nx.descendants(G_lp, s_id)
 	d_parents = nx.ancestors(G_lp, d_id)
 
 	#新建光路：源节点连通的点 -> 宿节点
 	for s_child in s_children:
-		is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_child, d_id, wave_num, bandwidth, wave_use_index)
+		is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_child, d_id, wave_num, wave_use_index)
 		if is_lp_new:
 			is_lp_mix = True
 			#已有光路：源节点 -> 源节点连通的某点
@@ -237,7 +238,7 @@ def find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, bandwidth, wave_use_ind
 
 	#新建光路：源节点 -> 宿节点连通的点
 	for d_parent in d_parents:
-		is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_id, d_id, wave_num, bandwidth, wave_use_index)
+		is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_id, d_id, wave_num, wave_use_index)
 		if is_lp_new:
 			is_lp_mix = True
 			#已有光路：宿节点连通的某点 -> 宿节点
@@ -247,7 +248,7 @@ def find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, bandwidth, wave_use_ind
 	#新建光路：源节点连通的点 -> 宿节点连通的点
 	for s_child in s_children:
 		for d_parent in d_parents:
-			is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_id, d_id, wave_num, bandwidth, wave_use_index)
+			is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_id, d_id, wave_num, wave_use_index)
 			if is_lp_new:
 				is_lp_mix = True
 				#已有光路：源节点 -> 源节点连通的某点； 宿节点连通的某点 -> 宿节点
@@ -266,8 +267,6 @@ def find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, bandwidth, wave_use_ind
 #lp_new，  list,[待确定lp_id,源节点，宿节点，波长号，使用带宽0，路径节点集合]
 def find_lp(G_topo, s_id, d_id, bandwidth, node_num, wave_capa, wave_num, wave_use_index, exist_lp):
 	lp_mode = 'block' 	#五种模式，分别是onehop，new, multihop, mix, block
-	lp_found = []
-	lp_new = []
 
 	#一跳接入
 	is_lp_onehop, lp_found, lp_new = find_lp_onehop(s_id, d_id, wave_capa, bandwidth, exist_lp)
@@ -276,30 +275,33 @@ def find_lp(G_topo, s_id, d_id, bandwidth, node_num, wave_capa, wave_num, wave_u
 		return lp_mode, lp_found, lp_new
 	
 	#新建光路接入
-	is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_id, d_id, wave_num, bandwidth, wave_use_index)
+	is_lp_new, lp_found, lp_new = find_lp_new(G_topo, s_id, d_id, wave_num, wave_use_index)
 	if is_lp_new:
 		lp_mode = 'new'
 		return lp_mode, lp_found, lp_new
 
 	#多跳光路接入
-	is_lp_multihop, lp_found, lp_new = find_lp_multihop(G_topo, s_id, d_id, bandwidth, exist_lp)
+	is_lp_multihop, lp_found, lp_new = find_lp_multihop(s_id, d_id, node_num, wave_capa, bandwidth, exist_lp)
 	if is_lp_multihop:
 		lp_mode = 'multihop'
 		return lp_mode, lp_found, lp_new
 	
 	#混合光路接入
-	is_lp_mix, lp_found, lp_new = find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, bandwidth, wave_use_index, exist_lp)
+	is_lp_mix, lp_found, lp_new = find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, wave_num, bandwidth, wave_use_index, exist_lp)
 	if is_lp_mix:
 		lp_mode = 'mix'
 		return lp_mode, lp_found, lp_new
 
 	#无法接入，阻塞
+	lp_found = []
+	lp_new = []
 	return lp_mode, lp_found, lp_new
 
-
+'''
 
 #产生随机的目的节点，在实际仿真中不需要
 def gen_d(s_id, node_num):
+	d_id = -1
 	for i in range(1000):
 		d_id = random.randint(0, node_num - 1)
 		if d_id != s_id:
@@ -307,7 +309,7 @@ def gen_d(s_id, node_num):
 	return d_id
 
 #统计输出函数
-def displsy(show, wave_use_index, exist_lp):
+def display(show, exist_lp):
 	print('access mode')
 	for key, value in show.items():
 		print(key, value)
@@ -328,26 +330,25 @@ def draw_topo(G_topo):
 	#nx.draw_networkx_edge_labels(G_topo, pos, labels=edge_labels)
 	plt.show()
 
-#主函数
-def main(topo_file_path, traffic_file_sort_path, node_num, wave_capa, wave_num):
+#测试函数
+def test(topo_file_p, traffic_file_sort_p, node_num, wave_capa, wave_num, req_num):
 	show = {'onehop': 0, 'new': 0, 'multihop': 0, 'mix': 0, 'block': 0}
 	wave_use_index, exist_lp, max_lp_id, record_path = reso_initial(node_num, wave_num, req_num)
-	G_topo = read_topo_file(topo_file_path)
+	G_topo = read_topo_file(topo_file_p)
 
 	count = 0
-	traffic_file_sort = open(traffic_file_sort_path, 'r')
+	traffic_file_sort = open(traffic_file_sort_p, 'r')
 	for line in traffic_file_sort.readlines(): 
 		item_list = line.strip().split('\t')
 		if item_list[0] == 'ReqNo':
 			continue					#第0行，全为说明文字，跳过当前循环
 		ReqNo = int(item_list[0])		#请求编号，同一个请求有到达和离开两个编号
 		node_id = int(item_list[1])		#请求产生的节点
-		bandwidth = int(item_list[6])	#请求的带宽
-		status = item_list[8]			#到达或者离开，arrive or leave
+		bandwidth = int(item_list[5])	#请求的带宽
+		status = item_list[7]			#到达或者离开，arrive or leave
 
 		s_id = node_id
 		d_id = gen_d(s_id, node_num)	#产生一个随机的目的节点
-		#d_id = 1
 		count += 1
 		print(str(count) + ':  ' + status)
 		if status == 'arrive':
@@ -360,15 +361,16 @@ def main(topo_file_path, traffic_file_sort_path, node_num, wave_capa, wave_num):
 			lp_found = record_path[ReqNo][0]
 			lp_new = record_path[ReqNo][1]
 			reso_delete(lp_found, lp_new, bandwidth, wave_use_index, exist_lp)
-	displsy(show, wave_use_index, exist_lp)
+	display(show, exist_lp)
 
 
 #主函数
 if __name__ == '__main__':
-	node_num = 6			#节点数目		
-	wave_capa = 10000		#单波长容量，10000M
-	wave_num = 8			#两节点之间的波长数目
-	req_num = 100000		#请求数目
-	topo_file_path = './topology/topo_dual_rings.xlsx'
+	n_num = 24			#节点数目		
+	w_capa = 10000		#单波长容量，10000M
+	w_num = 2			#两节点之间的波长数目
+	r_num = 100000		#请求数目
+	topo_file_path = './topology/topo_usnet.xlsx'
 	traffic_file_sort_path = './traffic_data/traffic_sort_100.txt'
-	main(topo_file_path, traffic_file_sort_path, node_num, wave_capa, wave_num)
+	test(topo_file_path, traffic_file_sort_path, n_num, w_capa, w_num, r_num)
+'''
