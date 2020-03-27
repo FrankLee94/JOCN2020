@@ -4,7 +4,7 @@
 # 各种统计及打印函数
 # JialongLi 2020/03/26
 
-
+#打印输出函数
 #打印输出函数
 def display(core_traff, locate_count):
 	print('delay-sensitive traffic origin:  ' + str(int(core_traff[0]/1000)) + ' Gb')
