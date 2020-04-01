@@ -5,11 +5,12 @@
 # JialongLi 2020/03/13
 
 
+import os
+import re
 import networkx as nx
 import matplotlib.pyplot as plt
 import xlrd
-import copy
-import random
+import pandas as pd
 
 
 NODE_NUM = 24			#节点数目
@@ -57,25 +58,38 @@ def shortest_path(G):
 	print(nx.descendants(G, 0)) #有向图，某个节点的后代
 	print(list(nx.simple_cycles(G)))
 
-def test2(n2):
-	if n2 == 2:
-		return 1
-	return 1
+#获取需要批量处理的文件名列表
+def get_file_paths(root_path):
+	path_pattern = re.compile(r'fcfs_cycle_\d+.*')
+	f_paths = []
+	for rt, dirs, files in os.walk(root_path):
+		for file in files:
+			match = path_pattern.match(file)
+			if match:
+				f_paths.append(root_path + '/' + file)
+	return f_paths
 
-def test1(n1, n2):
-	if n1 == 3:
-		return
-	test2(n2)
+
+#读取多个文件，求取平均值
+def file_process(file_paths_list, rt):
+	file_num = 0
+	for file in file_paths_list:
+		if file_num == 0:
+			df = pd.read_excel(file)
+		else:
+			df = df + pd.read_excel(file)
+		file_num += 1
+		#data = df.to_dict(orient='index')
+		#data = df.to_dict(orient='records')
+		print('file num: ' + str(file_num))
+	df = df.applymap(lambda x: x / file_num)
+	df.to_excel(rt + '/average.xlsx', index = False)
+
+
 
 
 if __name__ == '__main__':
-	topo_file_path = './topology/topo_usnet.xlsx'
-	G = read_topo_file(topo_file_path)
-	#drwa_topo(G)
-	#print(nx.has_path(G, 0, 3))
-	#print(nx.shortest_path(G, source=1, target=5, weight='weight'))
 
-	n1 = 1,
-	m2 = 1
-	test1(n1 ,m2)
-
+	root = 'C:/Cloud/JOCN2020/project/result/cycle_500_1000_6'
+	file_paths = get_file_paths(root)
+	file_process(file_paths, root)

@@ -266,6 +266,10 @@ def find_lp_mix(G_topo, s_id, d_id, node_num, wave_capa, wave_num, bandwidth, wa
 #lp_found，list,[已有的lp_id,源节点，宿节点，波长号，使用带宽0，路径节点集合]
 #lp_new，  list,[待确定lp_id,源节点，宿节点，波长号，使用带宽0，路径节点集合]
 def find_lp(G_topo, s_id, d_id, bandwidth, node_num, wave_capa, wave_num, wave_use_index, exist_lp):
+	if s_id == d_id:
+		print('the source node is the same as destination node!!')
+		return
+
 	lp_mode = 'block' 	#五种模式，分别是onehop，new, multihop, mix, block
 
 	#一跳接入
@@ -298,6 +302,7 @@ def find_lp(G_topo, s_id, d_id, bandwidth, node_num, wave_capa, wave_num, wave_u
 	return lp_mode, lp_found, lp_new
 
 '''
+#**********************************在此处截断，下面为测试函数
 
 #产生随机的目的节点，在实际仿真中不需要
 def gen_d(s_id, node_num):
@@ -348,7 +353,8 @@ def test(topo_file_p, traffic_file_sort_p, node_num, wave_capa, wave_num, req_nu
 		status = item_list[7]			#到达或者离开，arrive or leave
 
 		s_id = node_id
-		d_id = gen_d(s_id, node_num)	#产生一个随机的目的节点
+		#d_id = gen_d(s_id, node_num)	#产生一个随机的目的节点
+		d_id = random.randint(0, node_num - 1)#源宿节点可能相同
 		count += 1
 		print(str(count) + ':  ' + status)
 		if status == 'arrive':
@@ -357,6 +363,10 @@ def test(topo_file_p, traffic_file_sort_p, node_num, wave_capa, wave_num, req_nu
 			record_path[ReqNo].append(copy.deepcopy(lp_found))#记录下某个请求使用光路的情况
 			record_path[ReqNo].append(copy.deepcopy(lp_new))
 			show[lp_mode] += 1
+			if s_id == d_id:
+				print (lp_mode)
+				print(lp_found)
+				print(lp_new)
 		else:		#业务离开
 			lp_found = record_path[ReqNo][0]
 			lp_new = record_path[ReqNo][1]
@@ -371,6 +381,8 @@ if __name__ == '__main__':
 	w_num = 2			#两节点之间的波长数目
 	r_num = 100000		#请求数目
 	topo_file_path = './topology/topo_usnet.xlsx'
-	traffic_file_sort_path = './traffic_data/traffic_sort_100.txt'
+	traffic_file_sort_path = './traffic_data/traffic_sort_240.txt'
 	test(topo_file_path, traffic_file_sort_path, n_num, w_capa, w_num, r_num)
+
+
 '''

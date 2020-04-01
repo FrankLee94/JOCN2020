@@ -9,8 +9,8 @@ import math
 import pandas as pd
 
 NODE_NUM = 24			#拓扑节点数目
-ARRIVE_RATE = 600		#到达率，计算出来的爱尔兰是整个系统的爱尔兰
-SERVICE_RATE = 1		#服务率
+#ARRIVE_RATE = 24 * 150	#到达率，计算出来的爱尔兰是整个系统的爱尔兰
+#SERVICE_RATE = 1		#服务率
 RATIO_DELAY_SEN = 0.3	#延时敏感业务占比
 REQ_NUM = 100000		#请求的总数目
 
@@ -23,14 +23,14 @@ def read_vm_instances(vm_instances_file_path):
 	return vm_instances_dict
 
 # a event generation
-def eventGeneration(vm_instances_dict):
+def eventGeneration(arr_rate, ser_rate, vm_instances_dict):
 	Probability_Poisson = random.random()
 	if Probability_Poisson == 0.0 or Probability_Poisson == 1.0:
 		Probability_Poisson = 0.5
-	interval = -(1e6 / ARRIVE_RATE) * math.log(1 - Probability_Poisson)   # event interval
+	interval = -(1e6 / arr_rate) * math.log(1 - Probability_Poisson)   # event interval
 	interval = int(round(interval))
 	Probability_Poisson = random.random()
-	persist_time = -(1e6 / SERVICE_RATE) * math.log(1 - Probability_Poisson)  # event service time
+	persist_time = -(1e6 / ser_rate) * math.log(1 - Probability_Poisson)  # event service time
 	persist_time = int(round(persist_time))
 	if interval == 0:		#避免出现两个业务间隔时间为0的情况
 		interval = 1
@@ -49,14 +49,14 @@ def eventGeneration(vm_instances_dict):
 	return interval, persist_time, node_id, CPU, RAM, bandwidth, delay_sen 
 
 # traffic generation, raw data
-def trafficGeneration(traffic_file_raw_path, vm_instances_dict):
+def trafficGeneration(traffic_file_raw_path, arr_rate, ser_rate, vm_instances_dict):
 	traffic_file_raw = open(traffic_file_raw_path, 'w')
 	traffic_file_raw.write('ReqNo' + '\t' + 'node_id' + '\t' + 'CPU' + '\t' + 'RAM' + \
 		'\t' + 'arrive_time' + '\t' + 'leave_time' + '\t' + 'persist_time' + '\t' + 'bandwidth' + '\t' + 'delay_sen' + '\n')
 	
 	absolute_time = 0
 	for i in range(REQ_NUM):
-		interval, persist_time, node_id, CPU, RAM, bandwidth, delay_sen = eventGeneration(vm_instances_dict)
+		interval, persist_time, node_id, CPU, RAM, bandwidth, delay_sen = eventGeneration(arr_rate, ser_rate, vm_instances_dict)
 		absolute_time += interval
 		arrive_time = absolute_time
 		leave_time = arrive_time + persist_time
@@ -108,10 +108,14 @@ def sortTraffic(traffic_file_raw_path, traffic_file_sort_path):
 
 
 if __name__ == '__main__':
-	Erlang = int(float(ARRIVE_RATE) / float(SERVICE_RATE))
-	vm_instances_file_ph = './ec2_instances.xlsx'
-	vm_instan_dict = read_vm_instances(vm_instances_file_ph)
-	traffic_file_raw_ph = './traffic_data/traffic_raw_' + str(Erlang) + '.txt'
-	traffic_file_sort_ph = './traffic_data/traffic_sort_' + str(Erlang) + '.txt'
-	trafficGeneration(traffic_file_raw_ph, vm_instan_dict)
-	sortTraffic(traffic_file_raw_ph, traffic_file_sort_ph)
+	for i in range(1, 31):#包前不包后
+		arrive_rate = i * 10 * 24
+		serive_rate = 1
+		erlang = int(float(arrive_rate) / float(serive_rate))
+		print('erlang: ' + str(i * 10))
+		vm_instances_file_ph = './topology/ec2_instances.xlsx'
+		vm_instan_dict = read_vm_instances(vm_instances_file_ph)
+		traffic_file_raw_ph = './traffic_data/traffic_raw_' + str(erlang) + '.txt'
+		traffic_file_sort_ph = './traffic_data/traffic_sort_' + str(erlang) + '.txt'
+		trafficGeneration(traffic_file_raw_ph, arrive_rate, serive_rate, vm_instan_dict)
+		sortTraffic(traffic_file_raw_ph, traffic_file_sort_ph)

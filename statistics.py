@@ -131,16 +131,17 @@ def display_blocking(req_sts, block_bd):
 	print('blocking rate in bandwidth:  ' + str(rate) + '%')
 
 #输出虚拟机放置的各种信息，以及连接阻塞率
-def display_locate_info(vm_locate_index, req_num):
+def display_locate_info(info_dict, vm_locate_index, req_num):
 	show = {'local':0, 'neigh':0, 'DC':0, 'block':0}
 	for key, value in vm_locate_index.items():
 		show[value[0]] += 1
 	for key, value in show.items():
 		rate = round(float(value) / float(req_num) * 100, 2)
 		print(key + ': ' + str(value) + '\t' + str(rate) + '%')
+		info_dict[key].append(rate / 100)
 
 #输出延时信息
-def display_latency(latency_sen, latency_uns):
+def display_latency(info_dict, latency_sen, latency_uns):
 	total_sen = 0.0
 	total_uns = 0.0
 	for item in latency_sen:
@@ -153,9 +154,12 @@ def display_latency(latency_sen, latency_uns):
 	print('average latency for sensitive:  ' + str(aver_sen) + 'ms')
 	print('average latency for insensitive:  ' + str(aver_uns) + 'ms')
 	print('average latency:  ' + str(aver) + 'ms')
+	info_dict['la_sen'].append(aver_sen)
+	info_dict['la_ins'].append(aver_uns)
+	info_dict['la'].append(aver)
 
 #core_traff_ori,double list, [[延时敏感], [延时不敏感]]
-def display_traffic(core_traff_ori, timing_list):
+def display_traffic(info_dict, core_traff_ori, timing_list):
 	total_sen = 0.0
 	total_uns = 0.0
 	core_traff = []
@@ -173,7 +177,10 @@ def display_traffic(core_traff_ori, timing_list):
 	print('average core traffic for sensitive:  ' + str(aver_sen) + 'Gb')
 	print('average core traffic for insensitive:  ' + str(aver_uns) + 'Gb')
 	print('average core traffic:  ' + str(aver) + 'Gb')
-
+	info_dict['traff_sen'].append(aver_sen)
+	info_dict['traff_ins'].append(aver_uns)
+	info_dict['traff'].append(aver)
+	'''
 	plt.plot(timing_list, core_traff_ori[0], color = 'red', label = 'sensitive')
 	plt.plot(timing_list, core_traff_ori[1], color = 'blue', label = 'insensitive')
 	plt.plot(timing_list, core_traff, color = 'green', label = 'all traffic')
@@ -183,10 +190,11 @@ def display_traffic(core_traff_ori, timing_list):
 	#plt.ylim(0, 250)
 	#plt.xlim(100*1e6, 110*1e6)
 	plt.show()
+	'''
 
 #打印输出函数
-def display(req_sts, block_bd, vm_locate_index, req_num, latency_sen, latency_uns, core_traff_ori, timing_list):
+def display(info_dict, req_sts, block_bd, vm_locate_index, req_num, latency_sen, latency_uns, core_traff_ori, timing_list):
 	display_blocking(req_sts, block_bd)
-	display_locate_info(vm_locate_index, req_num)
-	display_latency(latency_sen, latency_uns)
-	display_traffic(core_traff_ori, timing_list)
+	display_locate_info(info_dict, vm_locate_index, req_num)
+	display_latency(info_dict, latency_sen, latency_uns)
+	display_traffic(info_dict, core_traff_ori, timing_list)
