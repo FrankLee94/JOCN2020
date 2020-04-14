@@ -14,6 +14,9 @@ NODE_NUM = 24			#拓扑节点数目
 RATIO_DELAY_SEN = 0.3	#延时敏感业务占比
 REQ_NUM = 100000		#请求的总数目
 
+#hot_zone = [6, 11, 20]
+hot_zone = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
 #读取VM实例的文件
 def read_vm_instances(vm_instances_file_path):
 	vm_instances_dict = {}
@@ -37,7 +40,10 @@ def eventGeneration(arr_rate, ser_rate, vm_instances_dict):
 	if persist_time == 0:	#避免出现某个业务持续时间为0的情况
 		persist_time = 1
 
-	node_id = random.randint(0, NODE_NUM - 1)	#从0开始到NODE_NUM - 1
+	#node_id = random.randint(0, NODE_NUM - 1)	#从0开始到NODE_NUM - 1
+	normal_zone = [i for i in range(NODE_NUM)]
+	zone = normal_zone + hot_zone
+	node_id = random.choice(zone)
 	vm_id = random.randint(0, len(vm_instances_dict) - 1)
 	CPU = vm_instances_dict[vm_id][0]
 	RAM = vm_instances_dict[vm_id][1]  
@@ -108,14 +114,15 @@ def sortTraffic(traffic_file_raw_path, traffic_file_sort_path):
 
 
 if __name__ == '__main__':
-	for i in range(1, 31):#包前不包后
-		arrive_rate = i * 10 * 24
+	for i in range(10, 11):#包前不包后
+		arrive_rate = i * NODE_NUM * 2
 		serive_rate = 1
-		erlang = int(float(arrive_rate) / float(serive_rate))
-		print('erlang: ' + str(i * 10))
+		erlang_all = int(float(arrive_rate) / float(serive_rate))
+		erlang_single_node = i * 2
+		print('single node erlang: ' + str(erlang_single_node))
 		vm_instances_file_ph = './topology/ec2_instances.xlsx'
 		vm_instan_dict = read_vm_instances(vm_instances_file_ph)
-		traffic_file_raw_ph = './traffic_data/traffic_raw_' + str(erlang) + '.txt'
-		traffic_file_sort_ph = './traffic_data/traffic_sort_' + str(erlang) + '.txt'
+		traffic_file_raw_ph = './traffic_data/traffic_raw_' + str(erlang_single_node) + '.txt'
+		traffic_file_sort_ph = './traffic_data/traffic_sort_' + str(erlang_single_node) + '.txt'
 		trafficGeneration(traffic_file_raw_ph, arrive_rate, serive_rate, vm_instan_dict)
 		sortTraffic(traffic_file_raw_ph, traffic_file_sort_ph)

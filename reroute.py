@@ -1,8 +1,8 @@
 #!usr/bin/env python
 #-*- coding:utf-8 -*-
 
-# this model is for grooming
-# JialongLi 2020/03/16
+# this model is for reroute
+# JialongLi 2020/04/13
 
 from itertools import islice
 import networkx as nx
@@ -397,7 +397,7 @@ if __name__ == '__main__':
 	r_num = 100000		#请求数目
 	topo_file_path = './topology/topo_usnet.xlsx'
 
-	for i in range(10, 26):#包前不包后
+	for i in range(10, 11):#包前不包后
 		erlang_single_node = i * 2
 		traffic_file_sort_ph = './traffic_data/traffic_sort_' + str(erlang_single_node) + '.txt'
 		print('***************single node erlang: ' + str(erlang_single_node))

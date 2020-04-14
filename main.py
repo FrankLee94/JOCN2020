@@ -13,7 +13,7 @@ import random
 
 
 NODE_NUM = 24			#节点数目
-WAVE_NUM = 2		#两节点之间的波长数目
+WAVE_NUM = 10		#两节点之间的波长数目
 REQ_NUM = 100000		#请求的总数目
 CPU_TOTAL = 500.0		#单节点CPU总量
 RAM_TOTAL = 1000.0		#单节点RAM总量
@@ -297,9 +297,9 @@ if __name__ == '__main__':
 
 	number = random.randint(0, 100000)
 	df_fcfs = pd.DataFrame(info_fcfs)
-	df_fcfs.to_excel('./result/cycle_500_1000_2/fcfs_cycle_' + str(number) + '.xlsx', index = False)
+	df_fcfs.to_excel('./result/cycle_500_1000_10/fcfs_cycle_' + str(number) + '.xlsx', index = False)
 	df_dsrf = pd.DataFrame(info_dsrf)
-	df_dsrf.to_excel('./result/cycle_500_1000_2/dsrf_cycle_' + str(number) + '.xlsx', index = False)
+	df_dsrf.to_excel('./result/cycle_500_1000_10/dsrf_cycle_' + str(number) + '.xlsx', index = False)
 
 
 '''	
