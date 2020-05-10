@@ -34,14 +34,8 @@ def k_shortest_paths(G, source, target, k, weight=None):
 	return list(islice(nx.shortest_simple_paths(G, source, target,weight=weight), k))
 
 if __name__ == '__main__':
-	a = [1, 2, 1 ]
-	count_1 = 0
-	count_2 = 0
-	for i in range(1000):
-		if random.choice(a) == 1:
-			count_1 += 1
-		else:
-			count_2 += 1
-	normal_zone = [i for i in range(24 - 1)]
-	print(normal_zone)
-		
+	for i in range(10):
+		if i > -1:
+			continue
+		for j in range(10):
+			print('yes')
