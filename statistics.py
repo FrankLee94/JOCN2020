@@ -9,7 +9,7 @@ import pickle
 import random
 
 
-REQ_NUM = 10000
+REQ_NUM = 100000
 
 
 

@@ -36,16 +36,16 @@ def drawThroughput(fcfs_path, dsrf_path, hbdf_path, curf_path, combine_path):
 	timing_curf = normalized(timing_curf)
 	timing_combine = normalized(timing_combine)
 
-	plt.plot(timing_fcfs, traff_fcfs, color = 'red', label = 'fcfs')
+	plt.plot(timing_fcfs, traff_fcfs, color = '#FF0000', label = 'fcfs')
 	plt.plot(timing_dsrf, traff_dsrf, color = 'blue', label = 'dsrf')
 	plt.plot(timing_hbdf, traff_hbdf, color = 'yellow', label = 'hbdf')
 	plt.plot(timing_curf, traff_curf, color = 'green', label = 'curf')
-	plt.plot(timing_combine, traff_combine, color = 'black', label = 'combine')
+	plt.plot(timing_combine, traff_combine, color = '#00a8b5', label = 'combine')
 	plt.xlabel('Time(s)', fontsize = 14)
 	plt.ylabel('Network Throughput(Gb/s)', fontsize = 14)
 	plt.legend(loc = 'lower left', fontsize = 14)
-	#plt.ylim(1500, 2800)
-	#plt.xlim(10, 20)
+	#plt.ylim(1400, 2700)
+	#plt.xlim(110, 115)
 	plt.show()
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ import networkx as nx
 import traffic
 import statistics as st
 import pandas as pd
+import copy
 
 class Baselines:
 	def __init__(self):
@@ -30,7 +31,6 @@ class Baselines:
 		self.vm_locate_idx = None 	# 用来画图
 		self.curr_load = None
 		self.e_width = None
-		self.max_bd = None
 		self.info = None
 
 	# 图形初始化
@@ -42,14 +42,11 @@ class Baselines:
 
 	# 初始化各条边的最大带宽，注意双向带宽合为单向带宽
 	def edge_init(self):
-		self.max_bd = {}
 		self.e_width = {}
 		for item in self.route_edges:
 			reverse_item = (item[1], item[0])
-			self.e_width[item] = 0					# 储存每条边的负载，对应线的宽度
-			self.e_width[reverse_item] = 0
-			self.max_bd[item] = 400				# 链路带宽400G
-			self.max_bd[reverse_item] = 400
+			self.e_width[item] = [0 for i in range(self.WAVE_NUM)]		# 储存每条边的负载
+			self.e_width[reverse_item] = [0 for i in range(self.WAVE_NUM)]
 
 	# 算法初始化, curr_load：每个节点CPU的使用率
 	# vm_locate_idx：存储请求的分类及具体位置，分类有local, neigh, DC，具体位置为本节点id
@@ -60,53 +57,88 @@ class Baselines:
 		self.G = self.graph_init()
 		self.edge_init()
 
+	# info初始化，只初始化一次
+	def info_init(self):
+		self.info = {'baselines': [], 'local': [], 'neigh': [], 'DC': [], 
+		'block': [], 'traffic': [], 'traffic_dc': [], 'traffic_neigh': [], 'latency': [], 
+		'latency_uns': [], 'latency_sen': [], 'block_rate': [], 'score': []}
+		for key, value in self.info.items():
+			if key == 'baselines':
+				self.info[key] = ['fcfs', 'dsrf', 'hbdf', 'curf', 'reserve', 'res_class']
+			else:
+				self.info[key] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
 	# 某个请求接入，更新虚拟机所在节点的负载
 	def fill_current_load(self, row):
-		if self.vm_locate_idx[row['ReqNo']][0] == 'DC':		# DC的CPU资源无限
+		if self.vm_locate_idx[row['ReqNo']][0] == 'DC':			# DC的CPU资源无限
+			pass
+		elif self.vm_locate_idx[row['ReqNo']][0] == 'block':	# 阻塞
 			pass
 		else:
-			vm_locate = self.vm_locate_idx[row['ReqNo']][1]	# 虚拟机的具体位置
+			vm_locate = self.vm_locate_idx[row['ReqNo']][1]		# 虚拟机的具体位置
 			self.curr_load[vm_locate][0] += row['cpu']
 			self.curr_load[vm_locate][1] += row['ram']
 
 	# 某个请求离开，更新虚拟机所在节点的负载
 	def rele_current_load(self, row):
-		if self.vm_locate_idx[row['ReqNo']][0] == 'DC':		# DC的CPU资源无限
+		if self.vm_locate_idx[row['ReqNo']][0] == 'DC':			# DC的CPU资源无限
+			pass
+		elif self.vm_locate_idx[row['ReqNo']][0] == 'block':	# 阻塞
 			pass
 		else:
-			vm_locate = self.vm_locate_idx[row['ReqNo']][1]	# 虚拟机的具体位置
+			vm_locate = self.vm_locate_idx[row['ReqNo']][1]		# 虚拟机的具体位置
 			self.curr_load[vm_locate][0] -= row['cpu']
 			self.curr_load[vm_locate][1] -= row['ram']
 
 	# 某个请求接入，更新路径负载
 	def fill_edge_width(self, row):
 		shortest_path = self.vm_locate_idx[row['ReqNo']][2]
-		if len(shortest_path) == 0:
+		waves = self.vm_locate_idx[row['ReqNo']][3]
+		if len(shortest_path) == 0:		# DC接入或者block, 不用更新
 			pass
 		else:
 			for i in range(len(shortest_path) - 1):
 				edge = (shortest_path[i], shortest_path[i + 1])
-				self.e_width[edge] += row['bandwidth']
+				wave = waves[i]
+				self.e_width[edge][wave] += row['bandwidth']
 
 	# 某个请求离开，更新路径负载
 	def rele_edge_width(self, row):
 		shortest_path = self.vm_locate_idx[row['ReqNo']][2]
-		if len(shortest_path) == 0:
+		waves = self.vm_locate_idx[row['ReqNo']][3]
+		if len(shortest_path) == 0:		# DC接入或者block, 不用更新
 			pass
 		else:
 			for i in range(len(shortest_path) - 1):
 				edge = (shortest_path[i], shortest_path[i + 1])
-				self.e_width[edge] -= row['bandwidth']
+				wave = waves[i]
+				self.e_width[edge][wave] -= row['bandwidth']
+
+	# 为当前的链路查找可以接入的波长
+	def first_fit(self, row, edge):
+		wave = -1
+		is_wave_ac = False
+		for i in range(self.WAVE_NUM):
+			if self.e_width[edge][i] + row['bandwidth'] <= self.CAPACITY:
+				wave = i
+				is_wave_ac = True
+				break
+		return is_wave_ac, wave
 
 	# 判断链路上是否有足够带宽接入
 	def is_enough_bd(self, row, shortest_path):
 		is_enough = True
+		waves = []
 		for i in range(len(shortest_path) - 1):			# 逐段链路检查
 			edge = (shortest_path[i], shortest_path[i+1])
-			if self.e_width[edge] + row['bandwidth'] > self.max_bd[edge]:
+			is_wave_ac, wave = self.first_fit(row, edge)
+			if is_wave_ac:
+				waves.append(wave)
+			else:
 				is_enough = False
+				waves = []
 				break
-		return is_enough
+		return is_enough, waves
 
 	# 先使用local，然后是neigh，最后是DC
 	def local_first(self, row):
@@ -117,18 +149,21 @@ class Baselines:
 			self.curr_load[node][1] + row['ram'] <= self.RAM_ONE:
 			locate_flag = 'local'
 			vm_locate = node
-			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+			waves = []
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 			return
 		
 		# 尝试使用邻居节点
 		neigh_node = row['area_id'] * 4
 		shortest_path = nx.shortest_path(self.G, source=node, target=neigh_node)
+		is_enough, waves = self.is_enough_bd(row, shortest_path)
 		if self.curr_load[neigh_node][0] + row['cpu'] <= self.CPU_TWO and \
-			self.curr_load[neigh_node][1] + row['ram'] <= self.RAM_TWO and \
-			self.is_enough_bd(row, shortest_path):
+			self.curr_load[neigh_node][1] + row['ram'] <= self.RAM_TWO and is_enough:
 			locate_flag = 'neigh'
 			vm_locate = neigh_node
-			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 			return
 		
 		# 使用数据中心
@@ -137,17 +172,21 @@ class Baselines:
 		else:
 			DC_node = 17
 		shortest_path = nx.shortest_path(self.G, source=node, target=DC_node)
-		if self.is_enough_bd(row, shortest_path):
+		is_enough, waves = self.is_enough_bd(row, shortest_path)
+		if is_enough:
 			locate_flag = 'DC'
 			vm_locate = DC_node
-			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 			return
 		
 		# 阻塞
 		locate_flag = 'block'
-		vm_locate = -1
+		vm_locate = 999
 		shortest_path = []
-		self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+		waves = []
+		self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+			copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 
 	# 先使用DC，接着使用neigh，最后是local
 	def dc_first(self, row):
@@ -158,21 +197,24 @@ class Baselines:
 		else:
 			DC_node = 17
 		shortest_path = nx.shortest_path(self.G, source=node, target=DC_node)
-		if self.is_enough_bd(row, shortest_path):
+		is_enough, waves = self.is_enough_bd(row, shortest_path)
+		if is_enough:
 			locate_flag = 'DC'
 			vm_locate = DC_node
-			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 			return
 		
 		# 尝试使用邻居节点
 		neigh_node = row['area_id'] * 4
 		shortest_path = nx.shortest_path(self.G, source=node, target=neigh_node)
+		is_enough, waves = self.is_enough_bd(row, shortest_path)
 		if self.curr_load[neigh_node][0] + row['cpu'] <= self.CPU_TWO and \
-			self.curr_load[neigh_node][1] + row['ram'] <= self.RAM_TWO and \
-			self.is_enough_bd(row, shortest_path):
+			self.curr_load[neigh_node][1] + row['ram'] <= self.RAM_TWO and is_enough:
 			locate_flag = 'neigh'
 			vm_locate = neigh_node
-			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 			return
 		
 		# 尝试使用local节点
@@ -181,50 +223,67 @@ class Baselines:
 			self.curr_load[node][1] + row['ram'] <= self.RAM_ONE:
 			locate_flag = 'local'
 			vm_locate = node
-			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+			waves = []
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 			return
 		
 		# 阻塞
 		locate_flag = 'block'
-		vm_locate = -1
+		vm_locate = 999
 		shortest_path = []
-		self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, shortest_path]
+		waves = []
+		self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+			copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 
-	# info初始化，只初始化一次
-	def info_init(self):
-		self.info = {'baselines': [], 'local': [], 'neigh': [], 'DC': [], 
-		'block': [], 'traffic': [], 'traffic_dc': [], 'traffic_neigh': [], 'latency': [], 
-		'latency_uns': [], 'latency_sen': [], 'block_rate': [], 'score': []}
-		for key, value in self.info.items():
-			if key == 'baselines':
-				self.info[key] = ['fcfs', 'dsrf', 'hbdf', 'curf', 'combine']
-			else:
-				self.info[key] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	# 先使用neigh，接着使用local，最后是dc
+	def neigh_first(self, row):
+		node = row['area_id'] * 4 + row['node_id'] + 1
+		
+		# 尝试使用邻居节点
+		neigh_node = row['area_id'] * 4
+		shortest_path = nx.shortest_path(self.G, source=node, target=neigh_node)
+		is_enough, waves = self.is_enough_bd(row, shortest_path)
+		if self.curr_load[neigh_node][0] + row['cpu'] <= self.CPU_TWO and \
+			self.curr_load[neigh_node][1] + row['ram'] <= self.RAM_TWO and is_enough:
+			locate_flag = 'neigh'
+			vm_locate = neigh_node
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
+			return
+		
+		# 尝试使用local节点
+		shortest_path = []
+		if self.curr_load[node][0] + row['cpu'] <= self.CPU_ONE and \
+			self.curr_load[node][1] + row['ram'] <= self.RAM_ONE:
+			locate_flag = 'local'
+			vm_locate = node
+			waves = []
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
+			return
 
-	# reward函数，根据当前的状态及动作给出相应的reward
-	def get_reward(self, row):
-		reward = 0
-		action = self.vm_locate_idx[row['ReqNo']][0]
-		if action == 'local':
-			reward += 200
-		elif action == 'neigh':
-			reward += 200
-			if row['delay_sen'] == 0:
-				pass
-			else:
-				reward -= -50  # 延时敏感，奖励--50
-			reward -= (int(row['bandwidth'] / 1000) + 1) * 10  # 占用带宽，带宽越大，惩罚越大，100-300之间
-		elif action == 'DC':		# 数据中心
-			reward += -50  # 成功接入数据中心，奖励50
-			if row['delay_sen'] == 0:
-				pass
-			else:
-				reward -= 100		# 延时敏感，奖励-400
-			reward -= (int(row['bandwidth'] / 1000) + 1) * 20  # 占用带宽，带宽越大，惩罚越大，200-600之间
-		else:			# block
-			reward -= 1000
-		#return reward
-		return 0
+		# 使用数据中心
+		if row['area_id'] < 2:			# 区域0和1使用数据中心‘16’
+			DC_node = 16
+		else:
+			DC_node = 17
+		shortest_path = nx.shortest_path(self.G, source=node, target=DC_node)
+		is_enough, waves = self.is_enough_bd(row, shortest_path)
+		if is_enough:
+			locate_flag = 'DC'
+			vm_locate = DC_node
+			self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+				copy.deepcopy(shortest_path), copy.deepcopy(waves)]
+			return
+
+		# 阻塞
+		locate_flag = 'block'
+		vm_locate = 999
+		shortest_path = []
+		waves = []
+		self.vm_locate_idx[row['ReqNo']] = [locate_flag, vm_locate, 
+			copy.deepcopy(shortest_path), copy.deepcopy(waves)]
 
 # *****************************对比算法1：先来先服务*******************************
 
@@ -234,9 +293,7 @@ class Baselines:
 		total_reward = 0
 		for index, row in self.df.iterrows(): 
 			if row['status'] == 'arrive':
-				self.local_first(row)
-				reward = self.get_reward(row)
-				total_reward += reward
+				self.local_first(row)				# 执行部署
 				self.fill_current_load(row)
 				self.fill_edge_width(row)
 			else:		# 'leave'
@@ -253,13 +310,11 @@ class Baselines:
 		self.initial()
 		total_reward = 0
 		for index, row in self.df.iterrows(): 
-			if row['status'] == 'arrive':
+			if row['status'] == 'arrive':			
 				if row['delay_sen'] == 1:
-					self.local_first(row)		# 延时敏感优先使用local
+					self.local_first(row)			# 延时敏感优先使用local
 				else:
 					self.dc_first(row)
-				reward = self.get_reward(row)
-				total_reward += reward
 				self.fill_current_load(row)
 				self.fill_edge_width(row)
 			else:		# 'leave'
@@ -278,12 +333,10 @@ class Baselines:
 		total_reward = 0
 		for index, row in self.df.iterrows(): 
 			if row['status'] == 'arrive':
-				if row['bandwidth'] > 20:		# 大带宽定义：大于20G
-					self.local_first(row)		# 大带宽优先使用local
+				if row['bandwidth'] > 20:			# 大带宽定义：大于20G
+					self.local_first(row)			# 大带宽优先使用local
 				else:
 					self.dc_first(row)
-				reward = self.get_reward(row)
-				total_reward += reward
 				self.fill_current_load(row)
 				self.fill_edge_width(row)
 			else:		# 'leave'
@@ -302,13 +355,11 @@ class Baselines:
 		self.initial()
 		total_reward = 0
 		for index, row in self.df.iterrows(): 
-			if row['status'] == 'arrive':
+			if row['status'] == 'arrive':	
 				if row['cpu'] > 25 or row['ram'] > 25:
 					self.dc_first(row)		# 计算密集优先使用DC
 				else:
 					self.local_first(row)
-				reward = self.get_reward(row)
-				total_reward += reward
 				self.fill_current_load(row)
 				self.fill_edge_width(row)
 			else:		# 'leave'
@@ -318,49 +369,134 @@ class Baselines:
 		print('computing-unintensive request first: ')
 		st.stastics(self.df, self.vm_locate_idx, self.info, 'curf', total_reward)
 
-# *****************************对比算法5：综合算法*******************************
+# *****************************对比算法5：资源预留算法*******************************
 
 	# 阻塞率：大带宽优先
 	# 延时敏感业务延时：延时敏感优先
 	# 平均延时：fcfs
-	def combine_algo(self, row, alfa):
+	def reserve_algo(self, row, alfa):
 		node = row['area_id'] * 4 + row['node_id'] + 1
 		# 只要小于阈值，统一使用fcfs
-		if self.curr_load[node][0] < alfa * self.CPU_ONE and self.curr_load[node][1] < alfa * self.RAM_ONE:
+		if self.curr_load[node][0] <= alfa * self.CPU_ONE and self.curr_load[node][1] <= alfa * self.RAM_ONE:
 			self.local_first(row)
 		else:
 			# 本地节点重负载以后，延时敏感或者大带宽业务，或者小计算任务，才能使用本地优先
 			# 其余使用数据中心
 			# 小计算任务: cpu < 10 and ram < 10
-			if row['delay_sen'] == 1 or row['bandwidth'] > 20 or \
-				(row['cpu'] < 10 and row['ram'] < 10):
+			if row['delay_sen'] == 1 or row['bandwidth'] > 20 or (row['cpu'] < 10 and row['ram'] < 10):
 				self.local_first(row)
 			else:
 				self.dc_first(row)
 
-	# 结合各个baseline算法的优势进行组合
-	def combine(self):
+	# 资源预留算法
+	# alfa表示预留的多少，1表示全部预留，0表示不预留
+	def reserve(self, alfa):
 		self.initial()
 		total_reward = 0
-		alfa = 0.7
 		for index, row in self.df.iterrows(): 
 			if row['status'] == 'arrive':
-				self.combine_algo(row, alfa)
-				reward = self.get_reward(row)
-				total_reward += reward
+				self.reserve_algo(row, alfa)
 				self.fill_current_load(row)
 				self.fill_edge_width(row)
 			else:		# 'leave'
 				self.rele_current_load(row)
 				self.rele_edge_width(row)
 		print('\n')
-		print('combine: ')
-		st.stastics(self.df, self.vm_locate_idx, self.info, 'combine', total_reward)
+		print('reserve: ')
+		st.stastics(self.df, self.vm_locate_idx, self.info, 'reserve', total_reward)
+
+# *****************************对比算法6：资源分级算法*******************************
+
+	# 对资源进行分级，方法1：只要local_attr >= dc_attr，就使用local_first
+	def res_class_I(self, row):
+		local_attr = 0
+		dc_attr = 0
+		if row['delay_sen'] == 1:		# 延时敏感，使用local
+			local_attr += 1
+		else:
+			dc_attr += 1
+		if row['bandwidth'] > 20:		# 大带宽，使用local
+			local_attr += 1
+		if row['bandwidth'] < 10:
+			dc_attr += 1
+		if row['cpu'] > 25 or row['ram'] > 25:	# 计算密集，使用dc
+			dc_attr += 1
+		if row['cpu'] < 10 and row['ram'] < 10:	# 计算不密集，使用local
+			local_attr += 1
+		if local_attr >= dc_attr:		# 只要local的属性大于等于dc的属性，使用local
+			self.local_first(row)
+		else:
+			self.dc_first(row)
+
+	# 对资源进行分级，方法2
+	# local_attr及dc_attr可能的值对比，3-0, 2-1, 2-0, 1-2, 1-1, 1-0, 0-1, 0-2, 0-3
+	def res_class_II(self, row):
+		local_attr = 0
+		dc_attr = 0
+		if row['delay_sen'] == 1:		# 延时敏感，使用local
+			local_attr += 1
+		else:
+			dc_attr += 1
+		if row['bandwidth'] > 20:		# 大带宽，使用local
+			local_attr += 1
+		if row['bandwidth'] < 10:
+			dc_attr += 1
+		if row['cpu'] > 25 or row['ram'] > 25:	# 计算密集，使用dc
+			dc_attr += 1
+		if row['cpu'] < 10 and row['ram'] < 10:	# 计算不密集，使用local
+			local_attr += 1
+		if (local_attr - dc_attr) >= 2:	# 只要local的属性大于等于dc的属性1以上，使用local
+			self.local_first(row)
+		elif (dc_attr - local_attr) >= 2: 
+			self.dc_first(row)
+		else:
+			self.neigh_first(row)
+
+	# 对资源进行分级，方法3
+	# 只要local的属性大于等于dc的属性1以上，使用local
+	def res_class_III(self, row):
+		local_attr = 0
+		dc_attr = 0
+		if row['delay_sen'] == 1:		# 延时敏感，使用local
+			local_attr += 1
+		else:
+			dc_attr += 1
+		if row['bandwidth'] > 20:		# 大带宽，使用local
+			local_attr += 1
+		if row['bandwidth'] < 10:
+			dc_attr += 1
+		if row['cpu'] > 25 or row['ram'] > 25:	# 计算密集，使用dc
+			dc_attr += 1
+		if row['cpu'] < 10 and row['ram'] < 10:	# 计算不密集，使用local
+			local_attr += 1
+		if (local_attr - dc_attr) >= 1:	# 只要local的属性大于等于dc的属性1以上，使用local
+			self.local_first(row)
+		elif (dc_attr - local_attr) >= 1: 
+			self.dc_first(row)
+		else:
+			self.neigh_first(row)
+
+	# 结合各个baseline算法的优势进行组合
+	def res_class(self):
+		self.initial()
+		total_reward = 0
+		for index, row in self.df.iterrows(): 
+			if row['status'] == 'arrive':
+				self.res_class_III(row)
+				self.fill_current_load(row)
+				self.fill_edge_width(row)
+			else:		# 'leave'
+				self.rele_current_load(row)
+				self.rele_edge_width(row)
+		print('\n')
+		print('res_class: ')
+		st.stastics(self.df, self.vm_locate_idx, self.info, 'res_class', total_reward)
 
 
 # main函数
 if __name__ == '__main__':
-	n = 1
+	
+	n = 10
 	baseline = Baselines()
 	baseline.info_init()
 	for i in range(n):
@@ -370,7 +506,7 @@ if __name__ == '__main__':
 		baseline.dsrf()
 		baseline.hbdf()
 		baseline.curf()
-		baseline.combine()
+		# baseline.res_class()
 	df = pd.DataFrame(baseline.info)
 	for key, value in baseline.info.items():
 		if key == 'baselines':
@@ -379,4 +515,27 @@ if __name__ == '__main__':
 			df[key] = df[key].apply(lambda x: x / n)
 		else:
 			df[key] = df[key].apply(lambda x: round(x / n, 2))
-	df.to_excel('./result/result0.7.xlsx', index = False)
+	df.to_excel('./result/result_baselines_erlang15.xlsx', index = False)
+	
+	'''
+	for j in range(11):
+		alf = float(j / 10)
+		print('alfa:' + str(j))
+		n = 10
+		baseline = Baselines()
+		baseline.info_init()
+		for i in range(n):
+			print(i)
+			baseline.df = traffic.get_new_df()		# 读取新的随机事件，一轮循环中大家都相同
+			baseline.reserve(alf)
+		df = pd.DataFrame(baseline.info)
+		for key, value in baseline.info.items():
+			if key == 'baselines':
+				pass
+			elif key == 'block_rate':
+				df[key] = df[key].apply(lambda x: x / n)
+			else:
+				df[key] = df[key].apply(lambda x: round(x / n, 2))
+		path = './result/result_reserve_erlang15_' + str(alf) + '.xlsx'
+		df.to_excel(path, index = False)
+	'''

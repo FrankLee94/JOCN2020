@@ -13,7 +13,7 @@ AREA_NUM = 4				# 一共4个区域
 RATIO_DELAY_SEN = 0.3		# 延时敏感业务占比
 MAX_CPU = 30				# 单个请求最大的CPU
 MAX_RAM = 30				# 单个请求最大的RAM
-REQ_NUM = 10000			# 请求的总数目
+REQ_NUM = 100000			# 请求的总数目
 
 
 # 产生一个请求Probability_Poisson
@@ -76,7 +76,7 @@ def traffic_generation(arr_rate, ser_rate):
 
 # 获取最新的df
 def get_new_df():
-	single_erlang = 20
+	single_erlang = 15
 	arrive_rate = NODE_NUM * AREA_NUM * single_erlang
 	service_rate = 1
 	df = traffic_generation(arrive_rate, service_rate)
